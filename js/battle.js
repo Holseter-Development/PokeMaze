@@ -1,14 +1,15 @@
-
 const Battle = {
   createBattlerFromAPI(apiPoke, level, moves){
     const bs = apiPoke.stats;
     const hp = Math.floor(((bs.hp||45)*2*level)/100) + level + 10;
-    function stat(b){ return Math.floor(((b||50)*2*level)/100)+5; }
+    const stat = b => Math.floor(((b||50)*2*level)/100)+5;
     return {
       id: apiPoke.id, name: apiPoke.name, displayName: apiPoke.displayName,
       sprite: apiPoke.sprite, back_sprite: apiPoke.back_sprite, types: apiPoke.types,
-      level, maxhp: hp, hp, atk:stat(bs.attack), def:stat(bs.defense), spa:stat(bs['special-attack']), spd:stat(bs['special-defense']), spe:stat(bs.speed),
-      moves, status:null, fainted:false, capture_rate: apiPoke.capture_rate
+      level, maxhp: hp, hp,
+      atk:stat(bs.attack), def:stat(bs.defense), spa:stat(bs['special-attack']), spd:stat(bs['special-defense']), spe:stat(bs.speed),
+      moves, status:null, fainted:false, capture_rate: apiPoke.capture_rate,
+      xp: 0, next: 50 + level*25
     };
   },
 
@@ -30,93 +31,126 @@ const Battle = {
     const A = isSpecial ? attacker.spa : attacker.atk;
     const D = isSpecial ? defender.spd : defender.def;
     const base = (((2*attacker.level/5 + 2) * (move.power||10) * A / Math.max(1,D)) / 50) + 2;
-    const stab = attacker.types.includes(move.type) ? 1.5 : 1.0;
+    const stab = attacker.types.includes(move.type) ? 1.5 : 1;
     const type = typeEffectiveness(move.type, defender.types);
     const rand = 0.85 + Math.random()*0.15;
     return Math.max(1, Math.floor(base * stab * type * rand));
   },
 
   async startWild(state, wild){
-    if(state.lock) return 'busy';
-    state.lock = true;
-    const player = state.party[0];
-    try{
-      BattleScene.show(state, player, wild);
-      BattleScene.say(`A wild ${wild.displayName} appeared!`);
+    if(state.battleActive) return 'busy';
+    state.battleActive = true;
 
-      const doAttack = (src, dst, move)=>{
-        if(Math.random()*100 > (move.accuracy||100)){ Log.write(`${src.displayName}'s ${move.name} missed!`); return; }
-        const dmg = Battle.calcDamage(src, dst, move);
-        dst.hp = clamp(dst.hp - dmg, 0, dst.maxhp);
-        Log.write(`${src.displayName} used ${move.name}! ${dmg} dmg.`);
-        if(dst.hp<=0){ dst.fainted=true; Log.write(`${dst.displayName} fainted!`); }
-      };
-      const enemyMove = ()=> wild.moves[Math.floor(Math.random()*wild.moves.length)];
+    const me = state.party[state.activeIndex||0];
+    if (window.AudioMgr) AudioMgr.play('wild', {loop:true, volume:0.35});
+    BattleScene.show(state, me, wild);
+    BattleScene.say(`A wild ${wild.displayName} appeared!`);
 
-      BattleScene.onMove = async (myMove)=>{
-        const first = player.spe >= wild.spe;
-        if(first){ doAttack(player, wild, myMove); if(!wild.fainted){ doAttack(wild, player, enemyMove()); } }
-        else { doAttack(wild, player, enemyMove()); if(!player.fainted){ doAttack(player, wild, myMove); } }
-        BattleScene.updateHP(player, wild);
-        await this.checkEnd(state, wild);
-      };
+    const doAttack = (src, dst, move)=>{
+      if(Math.random()*100 > (move.accuracy||100)){ Log.write(`${src.displayName}'s ${move.name} missed!`); return; }
+      const dmg = this.calcDamage(src, dst, move);
+      dst.hp = clamp(dst.hp - dmg, 0, dst.maxhp);
+      Log.write(`${src.displayName} used ${move.name}! ${dmg} dmg.`);
+      if(dst.hp<=0){ dst.fainted=true; Log.write(`${dst.displayName} fainted!`); }
+    };
+    const enemyMove = ()=> wild.moves[Math.floor(Math.random()*wild.moves.length)];
+    const refresh   = ()=>{ renderParty(state.party); BattleScene.updateHP(state.party[state.activeIndex||0], wild); };
 
-      BattleScene.onCatch = ()=>{
-        if(state.items.pokeball<=0){ Log.write('No Poké Balls left!'); return; }
-        state.items.pokeball--; updateMetaUI(state);
-        const hpFactor = (3*wild.maxhp - 2*wild.hp)/(3*wild.maxhp);
-        const base = (wild.capture_rate||45)/255;
-        const chance = Math.max(0.02, Math.min(0.9, base * (0.35 + hpFactor)));
-        if(Math.random()<chance){
-          Log.write(`Gotcha! ${wild.displayName} was caught!`);
-          state.party.push(wild); addDexEntry(wild);
-          BattleScene.hide();
-        }else{
-          Log.write(`${wild.displayName} broke free!`);
-          doAttack(wild, player, enemyMove()); BattleScene.updateHP(player, wild);
-          this.checkEnd(state, wild);
-        }
-      };
+    BattleScene.onMove = async (myMove)=>{
+      const me = state.party[state.activeIndex||0];
+      const first = me.spe >= wild.spe;
+      if(first){ doAttack(me, wild, myMove); if(!wild.fainted) doAttack(wild, me, enemyMove()); }
+      else     { doAttack(wild, me, enemyMove()); if(!me.fainted) doAttack(me, wild, myMove); }
+      refresh(); await this.checkEnd(state, wild);
+    };
 
-      BattleScene.onRun = ()=>{
-        const canRun = player.spe >= wild.spe || Math.random()<0.5;
-        if(canRun){ Log.write('Got away safely!'); BattleScene.hide(); }
-        else { Log.write('Can’t escape!'); doAttack(wild, player, enemyMove()); BattleScene.updateHP(player, wild); this.checkEnd(state, wild); }
-      };
+    BattleScene.onCatch = ()=>{
+      if(state.items.pokeball<=0){ Log.write('No Poké Balls left!'); return; }
+      state.items.pokeball--; updateMetaUI(state);
+      const hpFactor = (3*wild.maxhp - 2*wild.hp)/(3*wild.maxhp);
+      const base = (wild.capture_rate||45)/255;
+      const chance = Math.max(0.02, Math.min(0.9, base * (0.35 + hpFactor)));
+      if(Math.random()<chance){
+        Log.write(`Gotcha! ${wild.displayName} was caught!`);
+        state.party.push(wild); addDexEntry(wild);
+        this.trainerGain(state, 12 + wild.level*2);
+        if (window.AudioMgr) { AudioMgr.play('win', {loop:false, volume:0.5}); setTimeout(()=>AudioMgr.play('amb',{loop:true,volume:0.25}),1800); }
+        BattleScene.hide(); state.battleActive=false;
+      }else{
+        Log.write(`${wild.displayName} broke free!`);
+        doAttack(wild, state.party[state.activeIndex||0], enemyMove()); refresh(); this.checkEnd(state, wild);
+      }
+    };
 
-      return new Promise(resolve=>{
-        const obs = new MutationObserver(()=>{
-          if(BattleScene.el && BattleScene.el.classList.contains('hidden')){
-            obs.disconnect(); resolve('end');
-          }
-        });
-        obs.observe(BattleScene.el, {attributes:true});
+    BattleScene.onPotion = ()=>{
+      if(state.items.potion<=0){ Log.write('No potions!'); return; }
+      const me = state.party[state.activeIndex||0];
+      state.items.potion--; me.hp = Math.min(me.maxhp, me.hp + 20);
+      Log.write(`${me.displayName} recovered some HP.`);
+      updateMetaUI(state); refresh();
+    };
+
+    BattleScene.onSwap = ()=>{
+      const alive = state.party.map((p,i)=>({p,i})).filter(x=>!x.p.fainted && x.p.hp>0 && x.i!==(state.activeIndex||0));
+      if(!alive.length){ Log.write('No healthy Pokémon to swap to.'); return; }
+      const html = `<div class="swap-grid">` + alive.map(x=>`
+        <div class="swap-card" data-i="${x.i}">
+          <div><b>${x.p.displayName}</b> Lv.${x.p.level}</div>
+          <div class="bar"><i style="width:${Math.round(100*x.p.hp/x.p.maxhp)}%"></i></div>
+        </div>`).join('') + `</div>`;
+      const m = modal(html, {title:'Choose Pokémon'});
+      m.querySelectorAll('.swap-card').forEach(el=>{
+        el.onclick = ()=>{
+          const i = parseInt(el.getAttribute('data-i'),10);
+          state.activeIndex = i; Log.write(`Go! ${state.party[i].displayName}!`);
+          m.classList.add('hidden'); m.innerHTML='';
+          BattleScene.show(state, state.party[i], wild);
+        };
       });
-    } finally {
-      state.lock = false;
-    }
+    };
   },
 
   async checkEnd(state, wild){
-    const player = state.party[0];
+    const me = state.party[state.activeIndex||0];
+
     if(wild.fainted){
       const gain = Math.floor(20 + wild.level*8);
-      player.xp = (player.xp||0) + gain;
-      Log.write(`${player.displayName} gained ${gain} XP!`);
-      while(player.xp >= (player.next||50 + player.level*25)){
-        player.xp -= (player.next||50 + player.level*25);
-        player.level++; player.maxhp += 3; player.hp = player.maxhp;
-        player.atk+=2; player.def+=2; player.spa+=2; player.spd+=2; player.spe+=1;
-        Log.write(`${player.displayName} grew to Lv.${player.level}!`);
-        await this.maybeEvolve(state, 0);
+      me.xp += gain; Log.write(`${me.displayName} gained ${gain} XP!`);
+      while(me.xp >= me.next){
+        me.xp -= me.next; me.level++; me.next = 50 + me.level*25;
+        me.maxhp += 3; me.hp = me.maxhp; me.atk+=2; me.def+=2; me.spa+=2; me.spd+=2; me.spe+=1;
+        Log.write(`${me.displayName} grew to Lv.${me.level}!`);
+        await this.maybeEvolve(state, state.activeIndex||0);
       }
       renderParty(state.party);
-      BattleScene.hide();
+
+      this.trainerGain(state, 10 + wild.level);
+      if (window.AudioMgr) { AudioMgr.play('win', {loop:false, volume:0.5}); setTimeout(()=>AudioMgr.play('amb',{loop:true,volume:0.25}),1800); }
+      BattleScene.hide(); state.battleActive=false;
     }
-    if(player.hp<=0){
-      this.defeat(state);
-      BattleScene.hide();
+
+    if(me.hp<=0){
+      const idx = state.party.findIndex(p=>p.hp>0 && !p.fainted);
+      if(idx>=0){
+        state.activeIndex = idx; Log.write(`Go! ${state.party[idx].displayName}!`);
+        BattleScene.show(state, state.party[idx], wild);
+      }else{
+        this.defeat(state);
+        if (window.AudioMgr) AudioMgr.play('amb', {loop:true, volume:0.25});
+        BattleScene.hide(); state.battleActive=false;
+      }
     }
+  },
+
+  trainerGain(state, xp){
+    state.playerXp = (state.playerXp||0) + xp;
+    while(state.playerXp >= (state.playerLevel||1)*100){
+      state.playerXp -= (state.playerLevel||1)*100;
+      state.playerLevel = (state.playerLevel||1) + 1;
+      Log.write(`Trainer leveled up! Lv ${state.playerLevel}.`);
+    }
+    state.playerLevel = state.playerLevel || 1;
+    updateMetaUI(state);
   },
 
   defeat(state){
@@ -126,25 +160,5 @@ const Battle = {
     state.items.pokeball = Math.max(state.items.pokeball, 3);
     updateMetaUI(state);
     Storage.save(state);
-  },
-
-  async startTrainer(state, enemyParty){
-    if(state.lock) return 'busy';
-    state.lock = true;
-    try{
-      Log.write('A trainer challenges you!');
-      for(let i=0;i<enemyParty.length;i++){
-        const wild = enemyParty[i];
-        await this.startWild(state, wild);
-        if(state.mode==='home') return 'defeat';
-      }
-      const reward = 200 + Math.floor(state.floor*20);
-      state.money += reward;
-      Log.write(`You beat the trainer! Earned ₽${reward}.`);
-      updateMetaUI(state);
-      return 'victory';
-    } finally {
-      state.lock = false;
-    }
   }
 };
