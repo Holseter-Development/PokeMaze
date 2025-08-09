@@ -2,8 +2,10 @@
 const World = {
   width: 24, height: 16,
   grid: [],
+  entities: [],
   player: {x:1.5, y:1.5, dir:0, hp:100},
   gen(floor=1){
+    this.width = 24; this.height = 16;
     const w=this.width, h=this.height;
     const grid = Array.from({length:h},()=>Array(w).fill(1));
     function carve(x,y){
@@ -23,7 +25,20 @@ const World = {
     }
     grid[h-2][w-2]=0;
     this.grid = grid;
+    this.entities = [];
     this.player = {x:1.5, y:1.5, dir:0, hp:100};
+  },
+
+  genHome(){
+    this.width = 12; this.height = 12;
+    const grid = Array.from({length:this.height},()=>Array(this.width).fill(1));
+    for(let y=1;y<this.height-1;y++) for(let x=1;x<this.width-1;x++) grid[y][x]=0;
+    this.grid = grid;
+    this.entities = [
+      {x:4.5, y:3.5, sprite:'assets/sprites/professor-oak.png', type:'oak'},
+      {x:7.5, y:3.5, sprite:'assets/sprites/professor-oak.png', type:'shop'}
+    ];
+    this.player = {x:6, y:8, dir:0, hp:100};
   },
   isWall(x,y){
     const xi = Math.floor(x), yi = Math.floor(y);

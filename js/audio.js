@@ -7,6 +7,7 @@ const AudioMgr = {
   },
   unlocked: false,
   current: null,
+  muted: false,
 
   _unlockOnce(){
     if (this.unlocked) return;
@@ -35,6 +36,7 @@ const AudioMgr = {
     }
     a.loop = loop;
     a.volume = volume;
+    a.muted = this.muted;
     try { a.currentTime = 0; a.play().catch(()=>{}); } catch(e){}
     this.current = a;
   },
@@ -43,6 +45,12 @@ const AudioMgr = {
     if (!this.current) return;
     try { this.current.pause(); } catch(e){}
     this.current = null;
+  },
+
+  toggleMute(){
+    this.muted = !this.muted;
+    Object.values(this.tracks).forEach(t=>{ t.muted = this.muted; });
+    return this.muted;
   },
 
   async playCry(url){

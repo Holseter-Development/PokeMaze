@@ -34,6 +34,22 @@ const Ray = {
       ctx.fillStyle = `rgb(${r},${g},${b})`;
       ctx.fillRect(col, y0, 1, height);
     }
+    const sprites = (world.entities||[]).map(e=>{
+      const dx = e.x - world.player.x;
+      const dy = e.y - world.player.y;
+      const dist = Math.hypot(dx,dy);
+      let ang = Math.atan2(dy,dx) - world.player.dir;
+      while(ang<-Math.PI) ang+=Math.PI*2; while(ang>Math.PI) ang-=Math.PI*2;
+      return Object.assign({dist,ang}, e);
+    }).sort((a,b)=>b.dist-a.dist);
+    sprites.forEach(s=>{
+      if(Math.abs(s.ang) > this.fov/2) return;
+      const size = Math.min(H, H/(s.dist*0.5));
+      const x = (s.ang + this.fov/2)/this.fov * W - size/2;
+      const y = H/2 - size;
+      s._img = s._img || (()=>{ const i=new Image(); i.src=s.sprite; return i; })();
+      ctx.drawImage(s._img, x, y, size, size);
+    });
     const fogGrad = ctx.createLinearGradient(0,0,0,H);
     fogGrad.addColorStop(0,'rgba(0,0,0,0.0)');
     fogGrad.addColorStop(0.6,'rgba(0,0,0,0.15)');
@@ -58,5 +74,9 @@ const Ray = {
     m.beginPath(); m.moveTo(world.player.x*sx, world.player.y*sy);
     m.lineTo((world.player.x+Math.cos(world.player.dir)*2)*sx, (world.player.y+Math.sin(world.player.dir)*2)*sy);
     m.stroke();
+    if(world.entities){
+      m.fillStyle='#ff0';
+      world.entities.forEach(e=>{ m.fillRect(e.x*sx-2, e.y*sy-2,4,4); });
+    }
   }
 };

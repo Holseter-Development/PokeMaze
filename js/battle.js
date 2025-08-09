@@ -73,29 +73,37 @@ const Battle = {
     };
 
     BattleScene.onCatch = ()=>{
-      if(state.items.pokeball<=0){ Log.write('No Poké Balls left!'); return; }
-      state.items.pokeball--; updateMetaUI(state);
-      const hpFactor = (3*wild.maxhp - 2*wild.hp)/(3*wild.maxhp);
-      const base = (wild.capture_rate||45)/255;
-      const chance = Math.max(0.02, Math.min(0.9, base * (0.35 + hpFactor)));
-      if(Math.random()<chance){
-        Log.write(`Gotcha! ${wild.displayName} was caught!`);
-        state.party.push(wild); addDexEntry(wild);
-        if(!state.meta.captured.includes(wild.id)){
-          state.meta.captured.push(wild.id);
-          const rate = wild.capture_rate||45;
-          const bonus = Math.max(1, Math.floor((255 - rate)/50) + 1);
-          state.meta.bonusBalls = (state.meta.bonusBalls||0) + bonus;
-          Log.write(`Permanent bonus: +${bonus} Poké Ball(s) each run!`);
+      const balls = [];
+      if(state.items.pokeball>0) balls.push({k:'pokeball', label:'Poké Ball', bonus:1});
+      if(state.items.greatball>0) balls.push({k:'greatball', label:'Great Ball', bonus:1.5});
+      if(!balls.length){ Log.write('No Poké Balls left!'); return; }
+      const throwBall = (ball)=>{
+        state.items[ball.k]--; updateMetaUI(state);
+        const hpFactor = (3*wild.maxhp - 2*wild.hp)/(3*wild.maxhp);
+        const base = (wild.capture_rate||45)/255;
+        const chance = Math.max(0.02, Math.min(0.9, base * (0.35 + hpFactor) * ball.bonus));
+        if(Math.random()<chance){
+          Log.write(`Gotcha! ${wild.displayName} was caught!`);
+          state.party.push(wild); addDexEntry(wild);
+          if(!state.meta.captured.includes(wild.id)){
+            state.meta.captured.push(wild.id);
+            const rate = wild.capture_rate||45;
+            const bonus = Math.max(1, Math.floor((255 - rate)/50) + 1);
+            state.meta.bonusBalls = (state.meta.bonusBalls||0) + bonus;
+            Log.write(`Permanent bonus: +${bonus} Poké Ball(s) each run!`);
+          }
+          this.trainerGain(state, 12 + wild.level*2);
+          if (window.AudioMgr){ AudioMgr.play('win', {loop:false, volume:0.5}); setTimeout(()=>AudioMgr.play('amb',{loop:true,volume:0.28}),1800); }
+          BattleScene.hide(); state.battleActive=false; Storage.save(state);
+        }else{
+          Log.write(`${wild.displayName} broke free!`);
+          doAttack(wild, state.party[state.activeIndex||0], enemyMove()); refresh(); this.checkEnd(state, wild);
         }
-        this.trainerGain(state, 12 + wild.level*2);
-        if (window.AudioMgr){ AudioMgr.play('win', {loop:false, volume:0.5}); setTimeout(()=>AudioMgr.play('amb',{loop:true,volume:0.28}),1800); }
-        BattleScene.hide(); state.battleActive=false;
-        Storage.save(state);
-      }else{
-        Log.write(`${wild.displayName} broke free!`);
-        doAttack(wild, state.party[state.activeIndex||0], enemyMove()); refresh(); this.checkEnd(state, wild);
-      }
+      };
+      if(balls.length===1){ throwBall(balls[0]); return; }
+      const html = `<div class="choice-grid">${balls.map(b=>`<div class="choice" data-k="${b.k}">${b.label}</div>`).join('')}</div>`;
+      const m = modal(html,{title:'Choose Ball'});
+      m.querySelectorAll('.choice').forEach(el=>{ el.onclick=()=>{ m.classList.add('hidden'); m.innerHTML=''; const ball=balls.find(b=>b.k===el.getAttribute('data-k')); throwBall(ball); }; });
     };
 
     BattleScene.onPotion = ()=>{
@@ -133,14 +141,7 @@ const Battle = {
     if(wild.fainted){
       const gain = Math.floor(15 + wild.level*7);
       me.xp += gain; Log.write(`${me.displayName} gained ${gain} XP!`);
-      while(me.xp >= me.next){
-        me.xp -= me.next; me.level++; me.next = 50 + me.level*25;
-        me.maxhp += 3; me.hp = me.maxhp;
-        me.atk+=2; me.def+=2; me.spa+=2; me.spd+=2; me.spe+=1;
-        me.moves.forEach(m => { m.ppMax = (m.ppMax||m.pp||20) + 1; m.pp = Math.min(m.ppMax, (m.pp||m.ppMax)); });
-        Log.write(`${me.displayName} grew to Lv.${me.level}!`);
-        await this.maybeEvolve(state, state.activeIndex||0);
-      }
+      if(me.xp >= me.next){ Log.write(`${me.displayName} is ready to evolve. Talk to Professor Oak.`); }
       renderParty(state.party);
 
       this.trainerGain(state, 10 + wild.level);

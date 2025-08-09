@@ -12,35 +12,6 @@ function modal(contentHTML, {title="Dialog"}={}){
   return root;
 }
 
-function homeScreen(onStart){
-  const html = `
-    <h1 class="title">PokéRaid</h1>
-    <p class="subtitle">Roguelite dungeon crawler with classic battles</p>
-    <div class="home-actions">
-      <button id="btnStartRaid" class="btn-wide">Enter Dungeon</button>
-      <button id="btnPickStarter" class="btn-wide">Choose Starter</button>
-      <button id="btnDexFull" class="btn-wide">Pokédex</button>
-      <button id="btnBuyPotion" class="btn-wide">Buy Potion (₽100)</button>
-    </div>
-    <p class="small">Tip: WASD to move, arrow keys or mouse drag to turn.</p>`;
-  const m = modal(html, {title:"Home"});
-  m.querySelector('#btnStartRaid').onclick = ()=>{ m.classList.add('hidden'); m.innerHTML=''; onStart(); };
-  m.querySelector('#btnPickStarter').onclick = ()=>{ pickStarter((p)=>{ onStart(p); }); };
-  m.querySelector('#btnDexFull').onclick = ()=> showPokedexFull();
-  m.querySelector('#btnBuyPotion').onclick = ()=>{
-    const cost = 100;
-    if ((Game.state.money||0) >= cost){
-      Game.state.money -= cost;
-      Game.state.items.potion = (Game.state.items.potion||0) + 1;
-      Log.write('Bought a potion.');
-      updateMetaUI(Game.state);
-      Storage.save(Game.state);
-    } else {
-      Log.write('Not enough money.');
-    }
-  };
-}
-
 function pickStarter(onPick){
   const html = `<p>Choose your starter Pokémon:</p><div class="choice-grid" id="starterGrid"></div>`;
   const m = modal(html, {title:"Your Starter"});
@@ -76,6 +47,7 @@ function renderParty(party){
 
 function updateMetaUI(state){
   document.getElementById('pokeballs').textContent = state.items.pokeball;
+  document.getElementById('greatballs').textContent = state.items.greatball||0;
   document.getElementById('potions').textContent   = state.items.potion;
   document.getElementById('money').textContent     = state.money;
   const label = state.mode==='home' ? 'Home' : ('Floor ' + state.floor);
