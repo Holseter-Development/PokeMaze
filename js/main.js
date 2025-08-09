@@ -3,7 +3,7 @@ const Game = {
     mode: 'home',
     floor: 1,
     party: [],
-    items: { pokeball: 5, potion: 2 },
+    items: { pokeball: 5, greatball: 0, potion: 2 },
     money: 0,
     meta: { perks: [], bonusBalls: 0, captured: [] },
     lock: false,
@@ -34,6 +34,7 @@ const Game = {
     const loaded = Storage.load();
     if (loaded) {
       this.state = Object.assign(this.state, loaded);
+      this.state.items = Object.assign({pokeball:5, greatball:0, potion:2}, loaded.items||{});
       this.state.meta = Object.assign({perks: [], bonusBalls: 0, captured: []}, loaded.meta||{});
     }
 
@@ -41,7 +42,7 @@ const Game = {
     this.ctx = this.canvas.getContext('2d');
     this.ctx.imageSmoothingEnabled = true;
 
-    World.gen(this.state.floor);
+    World.genHome();
 
     this.bindControls();
     document.getElementById('btnEnter').onclick = ()=> this.enterDungeon();
@@ -51,13 +52,17 @@ const Game = {
       const s = Storage.load();
       if (s) {
         this.state = Object.assign(this.state, s);
+        this.state.items = Object.assign({pokeball:5, greatball:0, potion:2}, s.items||{});
         this.state.meta = Object.assign({perks: [], bonusBalls: 0, captured: []}, s.meta||{});
       }
       updateMetaUI(this.state);
       renderParty(this.state.party);
       if (this.state.mode === 'dungeon') World.gen(this.state.floor);
-    };
+      };
     document.getElementById('btnHelp').onclick  = showHelp;
+    document.getElementById('btnMute').onclick  = ()=>{
+      if(window.AudioMgr){ const m = AudioMgr.toggleMute(); document.getElementById('btnMute').textContent = m ? 'Unmute' : 'Mute'; }
+    };
 
     updateMetaUI(this.state);
     renderParty(this.state.party);
@@ -68,38 +73,38 @@ const Game = {
 
   showHome(initial=false){
     this.state.mode = 'home';
-    updateMetaUI(this.state);
-    if (window.AudioMgr) AudioMgr.play('amb', {loop:true, volume:0.25});
 
-    homeScreen(async (maybeStarter) => {
-      if (maybeStarter) {
-        const moves   = await API.chooseLevelUpMoves(maybeStarter, 1);
-        const starter = Battle.createBattlerFromAPI(maybeStarter, 1, moves);
-        this.state.party = [starter];
-        this.state.activeIndex = 0;
-        addDexEntry(starter);
-        renderParty(this.state.party);
-        Storage.save(this.state);
+    // Heal the party when returning home
+    this.state.party.forEach(p => {
+      p.hp = p.maxhp;
+      p.status = null;
+      p.fainted = false;
+      if (Array.isArray(p.moves)) {
+        p.moves.forEach(m => { m.pp = m.ppMax || m.pp; });
       }
-      this.enterDungeon();
     });
+    renderParty(this.state.party);
+
+    Log.write('All Pokémon have been healed.');
+
+    updateMetaUI(this.state);
+    Storage.save(this.state);
+
+    World.genHome();
+
+    if(!this.state.party.length){
+      Log.write('Visit Professor Oak to choose your starter.');
+    }
+
+    if (window.AudioMgr) AudioMgr.play('amb', {loop:true, volume:0.25});
   },
 
   enterDungeon(){
     if (!this.state.party.length) {
-      pickStarter(async (p)=>{
-        const moves = await API.chooseLevelUpMoves(p, 1);
-        const starter = Battle.createBattlerFromAPI(p, 1, moves);
-        this.state.party = [starter];
-        this.state.activeIndex = 0;
-        addDexEntry(starter);
-        renderParty(this.state.party);
-        Storage.save(this.state);
-        this.beginRun();
-      });
-    } else {
-      this.beginRun();
+      Log.write('You need a Pokémon from Professor Oak first.');
+      return;
     }
+    this.beginRun();
   },
 
   beginRun(){
@@ -113,7 +118,10 @@ const Game = {
   },
 
   bindControls(){
-    window.addEventListener('keydown', e => { this.keys[e.key.toLowerCase()] = true; });
+    window.addEventListener('keydown', e => { 
+      this.keys[e.key.toLowerCase()] = true; 
+      if(e.key === ' '){ this.interact(); }
+    });
     window.addEventListener('keyup',   e => { this.keys[e.key.toLowerCase()] = false; });
 
     let dragging=false, lastX=0;
@@ -127,15 +135,89 @@ const Game = {
     });
   },
 
-  async step(dt){
-    if (this.state.mode !== 'dungeon') {
-      const ctx=this.ctx, W=this.canvas.width, H=this.canvas.height;
-      ctx.clearRect(0,0,W,H);
-      const grad = ctx.createLinearGradient(0,0,0,H);
-      grad.addColorStop(0,'#0d1528'); grad.addColorStop(1,'#0b0f19');
-      ctx.fillStyle=grad; ctx.fillRect(0,0,W,H);
+  interact(){
+    if(this.state.mode !== 'home') return;
+    const p = World.player;
+    const npc = (World.entities||[]).find(e=>Math.hypot(e.x-p.x, e.y-p.y) < 1);
+    if(!npc) return;
+    if(npc.type==='oak') this.talkOak();
+    else if(npc.type==='shop') this.openShop();
+  },
+
+  openShop(){
+    const html = `
+      <p>Welcome! What would you like?</p>
+      <button id="buyPotion" class="btn-wide">Potion (₽100)</button>
+      <button id="buyGreat" class="btn-wide">Great Ball (₽300)</button>`;
+    const m = modal(html,{title:'Shop'});
+    m.querySelector('#buyPotion').onclick = ()=>{
+      const cost=100;
+      if((this.state.money||0) >= cost){
+        this.state.money -= cost;
+        this.state.items.potion = (this.state.items.potion||0)+1;
+        Log.write('Bought a potion.');
+        updateMetaUI(this.state); Storage.save(this.state);
+      }else{ Log.write('Not enough money.'); }
+    };
+    m.querySelector('#buyGreat').onclick = ()=>{
+      const cost=300;
+      if((this.state.money||0) >= cost){
+        this.state.money -= cost;
+        this.state.items.greatball = (this.state.items.greatball||0)+1;
+        Log.write('Bought a Great Ball.');
+        updateMetaUI(this.state); Storage.save(this.state);
+      }else{ Log.write('Not enough money.'); }
+    };
+  },
+
+  async talkOak(){
+    if(!this.state.party.length){
+      pickStarter(async (p)=>{
+        const moves = await API.chooseLevelUpMoves(p,1);
+        const starter = Battle.createBattlerFromAPI(p,1,moves);
+        this.state.party=[starter]; this.state.activeIndex=0;
+        addDexEntry(starter); renderParty(this.state.party); updateMetaUI(this.state); Storage.save(this.state);
+        Log.write(`You chose ${starter.displayName}!`);
+      });
       return;
     }
+    const eligible = this.state.party.map((p,i)=>({p,i}))
+      .filter(x=>x.p.hp===x.p.maxhp && x.p.xp >= x.p.next);
+    let html = `<p>Professor Oak: Need assistance?</p>
+      <button id="oakTips" class="btn-wide">Any tips?</button>`;
+    if(eligible.length){
+      html += `<p>Evolve a Pokémon:</p><div class="choice-grid">`+
+        eligible.map(x=>`<div class="choice" data-i="${x.i}"><div><b>${x.p.displayName}</b> Lv.${x.p.level}</div></div>`).join('')+
+        `</div>`;
+    }
+    const m = modal(html,{title:'Professor Oak'});
+    m.querySelector('#oakTips').onclick = ()=>{ Log.write('Oak: Train hard and catch many Pokémon!'); };
+    if(eligible.length){
+      m.querySelectorAll('.choice').forEach(el=>{
+        el.onclick = async ()=>{
+          const i = parseInt(el.getAttribute('data-i'),10);
+          m.classList.add('hidden'); m.innerHTML='';
+          await this.levelUp(i);
+        };
+      });
+    }
+  },
+
+  async levelUp(idx){
+    const me = this.state.party[idx];
+    while(me.xp >= me.next){
+      me.xp -= me.next; me.level++; me.next = 50 + me.level*25;
+      me.maxhp += 3; me.hp = me.maxhp;
+      me.atk+=2; me.def+=2; me.spa+=2; me.spd+=2; me.spe+=1;
+      me.moves.forEach(m => { m.ppMax = (m.ppMax||m.pp||20) + 1; m.pp = Math.min(m.ppMax, (m.pp||m.ppMax)); });
+      Log.write(`${me.displayName} grew to Lv.${me.level}!`);
+      await Battle.maybeEvolve(this.state, idx);
+    }
+    renderParty(this.state.party); updateMetaUI(this.state); Storage.save(this.state);
+  },
+
+  async step(dt){
+    if (this.state.mode !== 'home' && this.state.mode !== 'dungeon') return;
 
     const speed = 2.1, rot = 2.5, p = World.player;
     const forward = (this.keys['w']?1:0) - (this.keys['s']?1:0);
@@ -149,30 +231,32 @@ const Game = {
     if(!World.isWall(nx, p.y)) p.x = nx;
     if(!World.isWall(p.x, ny)) p.y = ny;
 
-    if (!this.state.battleActive && Math.random() < BASE_ENCOUNTER_RATE * dt) {
-      await this.encounter();
-    }
-
-    if (this.keys[' ']){
-      this.keys[' '] = false;
-      if (!this.state.battleActive){
-        const wild = await API.getRandomEncounter(this.state.floor, this.state.playerLevel);
-        await Battle.startWild(this.state, wild);
-        renderParty(this.state.party);
+    if (this.state.mode === 'dungeon'){
+      if (!this.state.battleActive && Math.random() < BASE_ENCOUNTER_RATE * dt) {
+        await this.encounter();
       }
-    }
 
-    const atExit = Math.floor(p.x)===World.width-2 && Math.floor(p.y)===World.height-2;
-    if (atExit) {
-      this.state.floor++;
-      World.gen(this.state.floor);
-      const BALL_PRICE = 200;
-      const afford = Math.floor(this.state.money / BALL_PRICE);
-      const buy    = Math.min(afford, 2);
-      this.state.money         -= buy * BALL_PRICE;
-      this.state.items.pokeball += buy;
-      Log.write(`Floor cleared! Advanced to Floor ${this.state.floor}. Auto-bought ${buy} Poké Ball(s).`);
-      updateMetaUI(this.state);
+      if (this.keys[' ']){
+        this.keys[' '] = false;
+        if (!this.state.battleActive){
+          const wild = await API.getRandomEncounter(this.state.floor, this.state.playerLevel);
+          await Battle.startWild(this.state, wild);
+          renderParty(this.state.party);
+        }
+      }
+
+      const atExit = Math.floor(p.x)===World.width-2 && Math.floor(p.y)===World.height-2;
+      if (atExit) {
+        this.state.floor++;
+        World.gen(this.state.floor);
+        const BALL_PRICE = 200;
+        const afford = Math.floor(this.state.money / BALL_PRICE);
+        const buy    = Math.min(afford, 2);
+        this.state.money         -= buy * BALL_PRICE;
+        this.state.items.pokeball += buy;
+        Log.write(`Floor cleared! Advanced to Floor ${this.state.floor}. Auto-bought ${buy} Poké Ball(s).`);
+        updateMetaUI(this.state);
+      }
     }
   },
 
@@ -188,7 +272,7 @@ const Game = {
 
     this.step(dt);
 
-    if (this.state.mode === 'dungeon') {
+    if (this.state.mode === 'dungeon' || this.state.mode === 'home') {
       Ray.render(this.ctx, this.canvas, World);
     }
 

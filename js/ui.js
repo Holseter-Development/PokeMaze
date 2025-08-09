@@ -12,22 +12,6 @@ function modal(contentHTML, {title="Dialog"}={}){
   return root;
 }
 
-function homeScreen(onStart){
-  const html = `
-    <h1 class="title">PokéRaid</h1>
-    <p class="subtitle">Roguelite dungeon crawler with classic battles</p>
-    <div class="home-actions">
-      <button id="btnStartRaid" class="btn-wide">Enter Dungeon</button>
-      <button id="btnPickStarter" class="btn-wide">Choose Starter</button>
-      <button id="btnDexFull" class="btn-wide">Pokédex</button>
-    </div>
-    <p class="small">Tip: WASD to move, arrow keys or mouse drag to turn.</p>`;
-  const m = modal(html, {title:"Home"});
-  m.querySelector('#btnStartRaid').onclick = ()=>{ m.classList.add('hidden'); m.innerHTML=''; onStart(); };
-  m.querySelector('#btnPickStarter').onclick = ()=>{ pickStarter((p)=>{ onStart(p); }); };
-  m.querySelector('#btnDexFull').onclick = ()=> showPokedexFull();
-}
-
 function pickStarter(onPick){
   const html = `<p>Choose your starter Pokémon:</p><div class="choice-grid" id="starterGrid"></div>`;
   const m = modal(html, {title:"Your Starter"});
@@ -63,7 +47,9 @@ function renderParty(party){
 
 function updateMetaUI(state){
   document.getElementById('pokeballs').textContent = state.items.pokeball;
-  document.getElementById('money').textContent = state.money;
+  document.getElementById('greatballs').textContent = state.items.greatball||0;
+  document.getElementById('potions').textContent   = state.items.potion;
+  document.getElementById('money').textContent     = state.money;
   const label = state.mode==='home' ? 'Home' : ('Floor ' + state.floor);
   document.getElementById('floorLabel').textContent = `${label}   |   Trainer Lv ${state.playerLevel||1}`;
 }
