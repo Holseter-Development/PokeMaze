@@ -5,7 +5,8 @@ const Game = {
     party: [],
     items: { pokeball: 5, greatball: 0, potion: 2 },
     money: 0,
-    meta: { perks: [], bonusBalls: 0, captured: [] },
+    meta: { perks: [], bonusBalls: 0, captured: [], unlockedFloors:[1] },
+    maxFloorReached: 1,
     lock: false,
     battleActive: false,
     activeIndex: 0,
@@ -35,7 +36,7 @@ const Game = {
     if (loaded) {
       this.state = Object.assign(this.state, loaded);
       this.state.items = Object.assign({pokeball:5, greatball:0, potion:2}, loaded.items||{});
-      this.state.meta = Object.assign({perks: [], bonusBalls: 0, captured: []}, loaded.meta||{});
+      this.state.meta = Object.assign({perks: [], bonusBalls: 0, captured: [], unlockedFloors:[1]}, loaded.meta||{});
     }
 
     this.canvas = document.getElementById('view');
@@ -53,7 +54,7 @@ const Game = {
       if (s) {
         this.state = Object.assign(this.state, s);
         this.state.items = Object.assign({pokeball:5, greatball:0, potion:2}, s.items||{});
-        this.state.meta = Object.assign({perks: [], bonusBalls: 0, captured: []}, s.meta||{});
+        this.state.meta = Object.assign({perks: [], bonusBalls: 0, captured: [], unlockedFloors:[1]}, s.meta||{});
       }
       updateMetaUI(this.state);
       renderParty(this.state.party);
@@ -87,6 +88,14 @@ const Game = {
 
     Log.write('All Pokémon have been healed.');
 
+    // unlock new starting floors every 5 floors reached
+    const highest = Math.floor((this.state.maxFloorReached||1)/5)*5;
+    const unlocked=this.state.meta.unlockedFloors||[1];
+    for(let f=5;f<=highest;f+=5){ if(!unlocked.includes(f)) unlocked.push(f); }
+    this.state.meta.unlockedFloors = unlocked;
+    this.state.floor = 1;
+    this.state.maxFloorReached = 1;
+
     updateMetaUI(this.state);
     Storage.save(this.state);
 
@@ -104,12 +113,20 @@ const Game = {
       Log.write('You need a Pokémon from Professor Oak first.');
       return;
     }
+    const opts=this.state.meta.unlockedFloors||[1];
+    let start=opts[0];
+    if(opts.length>1){
+      const input=prompt(`Start at which floor? Available: ${opts.join(', ')}`, String(start));
+      const num=parseInt(input,10); if(opts.includes(num)) start=num;
+    }
+    this.state.floor=start;
     this.beginRun();
   },
 
   beginRun(){
     this.state.mode = 'dungeon';
     World.gen(this.state.floor);
+    this.state.maxFloorReached = Math.max(this.state.maxFloorReached||1, this.state.floor);
     const baseBalls = 5 + (this.state.meta.bonusBalls||0);
     this.state.items.pokeball = Math.max(this.state.items.pokeball, baseBalls);
     updateMetaUI(this.state);
@@ -239,23 +256,50 @@ const Game = {
       if (this.keys[' ']){
         this.keys[' '] = false;
         if (!this.state.battleActive){
-          const wild = await API.getRandomEncounter(this.state.floor, this.state.playerLevel);
-          await Battle.startWild(this.state, wild);
-          renderParty(this.state.party);
+          const target = World.entities.find(e=>Math.hypot(e.x-p.x, e.y-p.y)<1);
+          if(target){
+            if(target.type==='ladder'){
+              this.state.floor++;
+              this.state.maxFloorReached = Math.max(this.state.maxFloorReached, this.state.floor);
+              World.gen(this.state.floor);
+              const BALL_PRICE = 200;
+              const afford = Math.floor(this.state.money / BALL_PRICE);
+              const buy    = Math.min(afford, 2);
+              this.state.money         -= buy * BALL_PRICE;
+              this.state.items.pokeball += buy;
+              Log.write(`Descended to Floor ${this.state.floor}. Auto-bought ${buy} Poké Ball(s).`);
+              updateMetaUI(this.state);
+            }else if(target.type==='chest' && !target.opened){
+              target.opened=true;
+              target.sprite=`assets/sprites/gif/${['Chest3.gif','Chest3.gif','Chest2.gif','BigChest.gif'][target.level]}`;
+              this.state.money += target.loot.money||0;
+              this.state.items.pokeball += target.loot.pokeball||0;
+              this.state.items.potion += target.loot.potion||0;
+              Log.write('You opened a chest and found loot!');
+              updateMetaUI(this.state); Storage.save(this.state);
+            }else if(target.requires){
+              const has=this.state.party.some(pk=>pk.types.includes(target.requires));
+              if(has){
+                Log.write(`Your Pokémon cleared the ${target.kind}.`);
+                World.grid[Math.floor(target.y)][Math.floor(target.x)] = 0;
+                World.entities = World.entities.filter(e=>e!==target);
+              }else{
+                Log.write(`A ${target.kind} blocks the way. A ${target.requires}-type Pokémon could clear it.`);
+              }
+            }
+          }else{
+            const wild = await API.getRandomEncounter(this.state.floor, this.state.playerLevel);
+            await Battle.startWild(this.state, wild);
+            renderParty(this.state.party);
+          }
         }
       }
 
-      const atExit = Math.floor(p.x)===World.width-2 && Math.floor(p.y)===World.height-2;
-      if (atExit) {
-        this.state.floor++;
-        World.gen(this.state.floor);
-        const BALL_PRICE = 200;
-        const afford = Math.floor(this.state.money / BALL_PRICE);
-        const buy    = Math.min(afford, 2);
-        this.state.money         -= buy * BALL_PRICE;
-        this.state.items.pokeball += buy;
-        Log.write(`Floor cleared! Advanced to Floor ${this.state.floor}. Auto-bought ${buy} Poké Ball(s).`);
-        updateMetaUI(this.state);
+      const trap = World.entities.find(e=>e.type==='trap' && !e.triggered && Math.floor(e.x)===Math.floor(p.x) && Math.floor(e.y)===Math.floor(p.y));
+      if(trap){
+        trap.triggered=true;
+        World.player.hp = Math.max(0, World.player.hp - (trap.damage||5));
+        Log.write('A trap was triggered!');
       }
     }
   },
