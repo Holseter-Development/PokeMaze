@@ -26,7 +26,8 @@ const BattleScene = {
               <div class="xp"><i id="pXP" style="width:${Math.round(100*(player.xp||0)/(player.next||100))}%"></i></div>
             </div>
           </div>
-          <div class="float-dmg" id="dmg"></div>
+          <div class="float-dmg dmg-enemy" id="dmgE"></div>
+          <div class="float-dmg dmg-player" id="dmgP"></div>
           <div class="battle-text" id="textbox">A wild ${enemy.displayName} appeared!</div>
         </div>
 
@@ -62,6 +63,15 @@ const BattleScene = {
   },
 
   say(text){ const tb = this.el.querySelector('#textbox'); if(tb) tb.textContent = text; },
-  damage(num){ const d = this.el.querySelector('#dmg'); if(!d) return; d.textContent = `-${num}`; d.classList.remove('show'); void d.offsetWidth; d.classList.add('show'); },
+  damage(num, target){
+    const id = target === 'player' ? '#dmgP' : '#dmgE';
+    const d = this.el.querySelector(id);
+    if(!d) return;
+    d.textContent = `-${num}`;
+    d.classList.remove('show');
+    void d.offsetWidth;
+    d.classList.add('show');
+    setTimeout(()=>d.classList.remove('show'), 1000);
+  },
   hide(){ if(this.el){ this.el.classList.add('hidden'); this.el.innerHTML=''; } }
 };

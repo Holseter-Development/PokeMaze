@@ -57,7 +57,7 @@ const Battle = {
       const dmg = this.calcDamage(src, dst, move);
       dst.hp = clamp(dst.hp - dmg, 0, dst.maxhp);
       Log.write(`${src.displayName} used ${move.name}! ${dmg} dmg.`);
-      BattleScene.damage(dmg);
+      BattleScene.damage(dmg, dst===wild ? 'enemy' : 'player');
       if(dst.hp<=0){ dst.fainted=true; Log.write(`${dst.displayName} fainted!`); }
     };
     const enemyMove = ()=> wild.moves[Math.floor(Math.random()*wild.moves.length)];
@@ -81,9 +81,17 @@ const Battle = {
       if(Math.random()<chance){
         Log.write(`Gotcha! ${wild.displayName} was caught!`);
         state.party.push(wild); addDexEntry(wild);
+        if(!state.meta.captured.includes(wild.id)){
+          state.meta.captured.push(wild.id);
+          const rate = wild.capture_rate||45;
+          const bonus = Math.max(1, Math.floor((255 - rate)/50) + 1);
+          state.meta.bonusBalls = (state.meta.bonusBalls||0) + bonus;
+          Log.write(`Permanent bonus: +${bonus} Poké Ball(s) each run!`);
+        }
         this.trainerGain(state, 12 + wild.level*2);
         if (window.AudioMgr){ AudioMgr.play('win', {loop:false, volume:0.5}); setTimeout(()=>AudioMgr.play('amb',{loop:true,volume:0.28}),1800); }
         BattleScene.hide(); state.battleActive=false;
+        Storage.save(state);
       }else{
         Log.write(`${wild.displayName} broke free!`);
         doAttack(wild, state.party[state.activeIndex||0], enemyMove()); refresh(); this.checkEnd(state, wild);
