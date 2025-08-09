@@ -1,3 +1,5 @@
+// main.js — WebGL renderer integration (replaces Canvas2D raycaster)
+
 const Game = {
   state: {
     mode: 'home',
@@ -14,7 +16,8 @@ const Game = {
     playerLevel: 1,
   },
 
-  canvas: null, ctx: null,
+  canvas: null,
+  glr: null,              // <-- Three.js-based renderer
   keys: {}, lastStep: 0,
 
   async ensureAudioLoaded(){
@@ -31,19 +34,21 @@ const Game = {
     Log.init();
     this.ensureAudioLoaded();
 
-    // Auto-load any saved state and ensure meta fields exist
+    // Load saved state and ensure defaults exist
     const loaded = Storage.load();
     if (loaded) {
       this.state = Object.assign(this.state, loaded);
       this.state.items = Object.assign({pokeball:5, greatball:0, potion:2}, loaded.items||{});
-      this.state.meta = Object.assign({perks: [], bonusBalls: 0, captured: [], unlockedFloors:[1]}, loaded.meta||{});
+      this.state.meta  = Object.assign({perks: [], bonusBalls: 0, captured: [], unlockedFloors:[1]}, loaded.meta||{});
     }
 
+    // Canvas + GL renderer
     this.canvas = document.getElementById('view');
-    this.ctx = this.canvas.getContext('2d');
-    this.ctx.imageSmoothingEnabled = false;
+    // no 2D ctx needed now; GLRenderer owns the context
+    this.glr = new window.GLRenderer({ canvas: this.canvas, atlasPath: 'assets/atlas.png' });
 
     World.genHome();
+    this.glr.buildLevel(World);
 
     this.bindControls();
     document.getElementById('btnEnter').onclick = ()=> this.enterDungeon();
@@ -54,15 +59,18 @@ const Game = {
       if (s) {
         this.state = Object.assign(this.state, s);
         this.state.items = Object.assign({pokeball:5, greatball:0, potion:2}, s.items||{});
-        this.state.meta = Object.assign({perks: [], bonusBalls: 0, captured: [], unlockedFloors:[1]}, s.meta||{});
+        this.state.meta  = Object.assign({perks: [], bonusBalls: 0, captured: [], unlockedFloors:[1]}, s.meta||{});
       }
       updateMetaUI(this.state);
       renderParty(this.state.party);
       if (this.state.mode === 'dungeon') World.gen(this.state.floor);
-      };
+    };
     document.getElementById('btnHelp').onclick  = showHelp;
     document.getElementById('btnMute').onclick  = ()=>{
-      if(window.AudioMgr){ const m = AudioMgr.toggleMute(); document.getElementById('btnMute').textContent = m ? 'Unmute' : 'Mute'; }
+      if(window.AudioMgr){
+        const m = AudioMgr.toggleMute();
+        document.getElementById('btnMute').textContent = m ? 'Unmute' : 'Mute';
+      }
     };
 
     updateMetaUI(this.state);
@@ -80,9 +88,7 @@ const Game = {
       p.hp = p.maxhp;
       p.status = null;
       p.fainted = false;
-      if (Array.isArray(p.moves)) {
-        p.moves.forEach(m => { m.pp = m.ppMax || m.pp; });
-      }
+      if (Array.isArray(p.moves)) p.moves.forEach(m => { m.pp = m.ppMax || m.pp; });
     });
     renderParty(this.state.party);
 
@@ -126,6 +132,7 @@ const Game = {
   beginRun(){
     this.state.mode = 'dungeon';
     World.gen(this.state.floor);
+    this.glr.buildLevel(World);
     this.state.maxFloorReached = Math.max(this.state.maxFloorReached||1, this.state.floor);
     const baseBalls = 5 + (this.state.meta.bonusBalls||0);
     this.state.items.pokeball = Math.max(this.state.items.pokeball, baseBalls);
@@ -155,7 +162,8 @@ const Game = {
   interact(){
     if(this.state.mode !== 'home') return;
     const p = World.player;
-    const npc = (World.entities||[]).find(e=>Math.hypot(e.x-p.x, e.y-p.y) < 1);
+    const npc = (World.entities||[]).find(e=>Math.hypot(e.x+p.x*-0+p.x - p.x, e.y - p.y) < 1) // keep same logic, just explicit
+      || (World.entities||[]).find(e=>Math.hypot(e.x - World.player.x, e.y - World.player.y) < 1);
     if(!npc) return;
     World.animate(npc);
     if(npc.type==='oak') this.talkOak();
@@ -264,6 +272,7 @@ const Game = {
               this.state.floor++;
               this.state.maxFloorReached = Math.max(this.state.maxFloorReached, this.state.floor);
               World.gen(this.state.floor);
+              this.glr.buildLevel(World);
               const BALL_PRICE = 200;
               const afford = Math.floor(this.state.money / BALL_PRICE);
               const buy    = Math.min(afford, 2);
@@ -320,7 +329,8 @@ const Game = {
     this.step(dt);
 
     if (this.state.mode === 'dungeon' || this.state.mode === 'home') {
-      Ray.render(this.ctx, this.canvas, World);
+      // Render 3D world with WebGL renderer (replaces Ray.render)
+      this.glr.render(World);
     }
 
     requestAnimationFrame(this.loop.bind(this));
