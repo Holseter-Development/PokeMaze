@@ -1,15 +1,10 @@
 const BattleScene = {
   el: null,
-  onMove: null,
-  onCatch: null,
-  onRun: null,
-  onSwap: null,
-  onPotion: null,
+  onMove: null, onCatch: null, onRun: null, onSwap: null, onPotion: null,
 
   show(state, player, enemy){
     if(!this.el) this.el = document.getElementById('battleOverlay');
     this.el.classList.remove('hidden');
-    this.el.classList.add('appear');
     this.el.innerHTML = `
       <div class="bui">
         <div class="scene">
@@ -21,30 +16,40 @@ const BattleScene = {
             <img class="e-sprite" id="eSprite" src="${enemy.sprite}">
           </div>
           <div class="bars">
-            <div class="bar e-bar"><div><b>${enemy.displayName}</b> Lv.${enemy.level}</div><div class="hp"><i id="eHP" style="width:${Math.round(100*enemy.hp/enemy.maxhp)}%"></i></div></div>
-            <div class="bar p-bar"><div><b>${player.displayName}</b> Lv.${player.level}</div><div class="hp"><i id="pHP" style="width:${Math.round(100*player.hp/player.maxhp)}%"></i></div></div>
+            <div class="bar e-bar">
+              <div class="name"><b>${enemy.displayName}</b> Lv.${enemy.level}</div>
+              <div class="hp"><i id="eHP" style="width:${Math.round(100*enemy.hp/enemy.maxhp)}%"></i></div>
+            </div>
+            <div class="bar p-bar">
+              <div class="name"><b>${player.displayName}</b> Lv.${player.level}</div>
+              <div class="hp"><i id="pHP" style="width:${Math.round(100*player.hp/player.maxhp)}%"></i></div>
+              <div class="xp"><i id="pXP" style="width:${Math.round(100*(player.xp||0)/(player.next||100))}%"></i></div>
+            </div>
           </div>
+          <div class="float-dmg" id="dmg"></div>
+          <div class="battle-text" id="textbox">A wild ${enemy.displayName} appeared!</div>
         </div>
-        <div class="menu">
-          <div class="moves" id="moves"></div>
-          <div class="actions">
-            <button id="btnCatch"  class="btn-big">Throw Ball</button>
-            <button id="btnPotion" class="btn-big">Use Potion</button>
-            <button id="btnSwap"   class="btn-big">Swap</button>
-            <button id="btnRun"    class="btn-big">Run</button>
+
+        <div class="battle-ui">
+          <div class="left-moves" id="moves"></div>
+          <div class="right-actions">
+            <button class="btn-big" id="btnBall">Throw Ball</button>
+            <button class="btn-big" id="btnPotion">Use Potion</button>
+            <button class="btn-big" id="btnSwap">Swap</button>
+            <button class="btn-big danger" id="btnRun">Run</button>
           </div>
-          <div class="textbox" id="textbox">A wild ${enemy.displayName} appeared!</div>
         </div>
       </div>`;
+
     const mv = this.el.querySelector('#moves');
     (player.moves||[]).forEach(m=>{
       const b = document.createElement('button');
       b.className = 'move';
-      b.innerHTML = `<div><b>${m.name}</b></div><small>${m.type.toUpperCase()} • ${m.damage_class} • PP ${m.pp}</small>`;
+      b.innerHTML = `<div class="title">${m.name}</div><div class="meta">${m.type.toUpperCase()} • ${m.damage_class} • PP ${m.pp}</div>`;
       b.onclick = ()=> this.onMove && this.onMove(m);
       mv.appendChild(b);
     });
-    this.el.querySelector('#btnCatch').onclick  = ()=> this.onCatch  && this.onCatch();
+    this.el.querySelector('#btnBall').onclick   = ()=> this.onCatch  && this.onCatch();
     this.el.querySelector('#btnPotion').onclick = ()=> this.onPotion && this.onPotion();
     this.el.querySelector('#btnSwap').onclick   = ()=> this.onSwap   && this.onSwap();
     this.el.querySelector('#btnRun').onclick    = ()=> this.onRun    && this.onRun();
@@ -53,8 +58,10 @@ const BattleScene = {
   updateHP(player, enemy){
     const p = this.el.querySelector('#pHP'); if(p) p.style.width = Math.round(100*player.hp/player.maxhp) + '%';
     const e = this.el.querySelector('#eHP'); if(e) e.style.width = Math.round(100*enemy.hp/ enemy.maxhp) + '%';
+    const x = this.el.querySelector('#pXP'); if(x) x.style.width = Math.min(100, Math.round(100*(player.xp||0)/(player.next||100))) + '%';
   },
 
   say(text){ const tb = this.el.querySelector('#textbox'); if(tb) tb.textContent = text; },
+  damage(num){ const d = this.el.querySelector('#dmg'); if(!d) return; d.textContent = `-${num}`; d.classList.remove('show'); void d.offsetWidth; d.classList.add('show'); },
   hide(){ if(this.el){ this.el.classList.add('hidden'); this.el.innerHTML=''; } }
 };

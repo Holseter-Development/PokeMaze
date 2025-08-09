@@ -1,4 +1,3 @@
-
 const Log = {
   el: null,
   init(){ this.el = document.getElementById('log'); },
@@ -9,7 +8,7 @@ function modal(contentHTML, {title="Dialog"}={}){
   const root = document.getElementById('modalRoot');
   root.classList.remove('hidden');
   root.innerHTML = `<div class="modal"><header><strong>${title}</strong><button id="modalClose" class="btn">✕</button></header><div class="content">${contentHTML}</div></div>`;
-  root.querySelector('#modalClose').onclick = ()=>{ root.classList.add('hidden'); root.innerHTML = ''; };
+  root.querySelector('#modalClose').onclick = ()=>{ root.classList.add('hidden'); root.innerHTML=''; };
   return root;
 }
 
@@ -20,11 +19,13 @@ function homeScreen(onStart){
     <div class="home-actions">
       <button id="btnStartRaid" class="btn-wide">Enter Dungeon</button>
       <button id="btnPickStarter" class="btn-wide">Choose Starter</button>
+      <button id="btnDexFull" class="btn-wide">Pokédex</button>
     </div>
     <p class="small">Tip: WASD to move, arrow keys or mouse drag to turn.</p>`;
   const m = modal(html, {title:"Home"});
   m.querySelector('#btnStartRaid').onclick = ()=>{ m.classList.add('hidden'); m.innerHTML=''; onStart(); };
   m.querySelector('#btnPickStarter').onclick = ()=>{ pickStarter((p)=>{ onStart(p); }); };
+  m.querySelector('#btnDexFull').onclick = ()=> showPokedexFull();
 }
 
 function pickStarter(onPick){
@@ -63,7 +64,8 @@ function renderParty(party){
 function updateMetaUI(state){
   document.getElementById('pokeballs').textContent = state.items.pokeball;
   document.getElementById('money').textContent = state.money;
-  document.getElementById('floorLabel').textContent = state.mode==='home' ? 'Home' : ('Floor ' + state.floor);
+  const label = state.mode==='home' ? 'Home' : ('Floor ' + state.floor);
+  document.getElementById('floorLabel').textContent = `${label}   |   Trainer Lv ${state.playerLevel||1}`;
 }
 
 function addDexEntry(poke){
@@ -72,4 +74,34 @@ function addDexEntry(poke){
   el.className = 'dex-entry';
   el.innerHTML = `<img src="${poke.sprite}"><div><div><b>#${poke.id} ${poke.name}</b></div><div class="small">${poke.types.join(' / ')}</div></div>`;
   dex.appendChild(el);
+}
+
+// Full-screen Pokedex
+function showPokedexFull(){
+  const items = Array.from(document.querySelectorAll('#pokedex .dex-entry')).map(el=>{
+    const img = el.querySelector('img')?.src;
+    const name = el.querySelector('b')?.textContent || '';
+    const idMatch = name.match(/^#(\d+)/);
+    const id = idMatch ? parseInt(idMatch[1],10) : 0;
+    const types = el.querySelector('.small')?.textContent || '';
+    return {id, name, img, types};
+  }).filter(x=>x.id>0).sort((a,b)=>a.id-b.id);
+
+  const html = `
+    <div style="padding:8px">
+      <div class="title">Pokédex</div>
+      <div class="small">Caught species • sorted by National Dex</div>
+    </div>
+    <div class="dex-full">
+      ${items.map(x=>`
+        <div class="dex-card">
+          <img src="${x.img||''}">
+          <div class="dex-meta">
+            <div><b>${x.name}</b></div>
+            <div class="small">#${x.id} • ${x.types}</div>
+          </div>
+        </div>
+      `).join('')}
+    </div>`;
+  modal(html, {title:"Pokédex"});
 }

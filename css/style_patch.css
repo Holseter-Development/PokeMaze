@@ -1,0 +1,35 @@
+/* Battle UI & Pokedex additions */
+.bui{position:absolute; inset:0; display:flex; flex-direction:column}
+.scene{flex:1; position:relative; border-radius:14px; overflow:hidden}
+.bg{position:absolute; inset:0; background:radial-gradient(1200px 600px at 50% 0%, #223a5c 0%, #1b2a44 60%, #102036 100%)}
+.platform{position:absolute; border-radius:50%; filter:blur(1px); opacity:0.95}
+.p-platform{left:6%; bottom:10%; width:40%; height:14%; background:radial-gradient(ellipse,#2a3b55,#17263a)}
+.e-platform{right:8%; top:14%; width:38%; height:12%; background:radial-gradient(ellipse,#2a3b55,#17263a)}
+.p-sprite{position:absolute; left:9%; bottom:14%; width:30%; image-rendering:pixelated}
+.e-sprite{position:absolute; right:10%; top:16%; width:26%; image-rendering:pixelated}
+
+.bars .bar{position:absolute; background:#0e1526; border:1px solid #1b2a44; padding:6px 8px; border-radius:10px; width:42%}
+.e-bar{top:4%; right:4%}
+.p-bar{bottom:6%; left:4%}
+.bar .hp{height:8px; background:#17233a; border-radius:6px; overflow:hidden; margin-top:4px}
+.bar .hp>i{display:block; height:100%; background:linear-gradient(90deg,#4ad66d,#b8e986)}
+.bar .xp{height:6px; background:#0d1a30; border-radius:6px; overflow:hidden; margin-top:4px}
+.bar .xp>i{display:block; height:100%; background:linear-gradient(90deg,#6aa6ff,#93c5fd)}
+
+.battle-text{position:absolute; left:0; right:0; top:8%; text-align:center; font-family:Oxanium,monospace; font-size:24px; color:#e8f2ff; text-shadow:0 2px 8px #0007}
+.float-dmg{position:absolute; right:18%; top:28%; font-weight:800; font-size:24px; color:#ff6e7a; opacity:0; transform:translateY(10px); transition:all .35s ease}
+.float-dmg.show{opacity:1; transform:translateY(-14px)}
+
+.battle-ui{display:grid; grid-template-columns:2fr 1fr; gap:12px; margin-top:10px}
+.left-moves{display:grid; grid-template-columns:1fr 1fr; gap:10px}
+.move{background:linear-gradient(180deg,#1b2a47,#15223a); border:1px solid #27406a; color:#dfe8ff; border-radius:12px; padding:12px; text-align:left}
+.move .title{font-weight:800; margin-bottom:4px; letter-spacing:.3px}
+.move .meta{font-size:12px; color:#9db7e8}
+.right-actions{display:grid; grid-template-columns:1fr 1fr; gap:10px}
+.btn-big{background:linear-gradient(180deg,#203055,#192744); color:#e7f0ff; border:1px solid #27406a; border-radius:12px; padding:12px; font-weight:700; cursor:pointer}
+.btn-big.danger{background:linear-gradient(180deg,#3e1e2c,#291622); border-color:#5a2638}
+
+/* Full-screen Pokedex */
+.dex-full{display:grid; grid-template-columns:repeat(4, 1fr); gap:10px; padding:10px; max-height:70vh; overflow:auto}
+.dex-card{display:flex; gap:10px; align-items:center; background:#0e1422; border:1px solid #1e2b46; border-radius:12px; padding:8px}
+.dex-card img{width:64px; height:64px; image-rendering:pixelated}

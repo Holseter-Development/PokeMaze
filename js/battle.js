@@ -3,18 +3,21 @@ const Battle = {
     const bs = apiPoke.stats;
     const hp = Math.floor(((bs.hp||45)*2*level)/100) + level + 10;
     const stat = b => Math.floor(((b||50)*2*level)/100)+5;
+    const mm = (moves||[]).map(m => Object.assign({ppMax: m.pp}, m));
     return {
       id: apiPoke.id, name: apiPoke.name, displayName: apiPoke.displayName,
       sprite: apiPoke.sprite, back_sprite: apiPoke.back_sprite, types: apiPoke.types,
+      cry: apiPoke.cry_legacy || null,
       level, maxhp: hp, hp,
       atk:stat(bs.attack), def:stat(bs.defense), spa:stat(bs['special-attack']), spd:stat(bs['special-defense']), spe:stat(bs.speed),
-      moves, status:null, fainted:false, capture_rate: apiPoke.capture_rate,
+      moves: mm, status:null, fainted:false, capture_rate: apiPoke.capture_rate,
       xp: 0, next: 50 + level*25
     };
   },
 
   async maybeEvolve(state, slot){
     const b = state.party[slot];
+    if (b.level % 10 !== 0) return;
     const api = await API.getPokemon(b.name);
     const evo = await API.getEvolutionIfEligible(api, b.level);
     if(evo){
@@ -42,21 +45,26 @@ const Battle = {
     state.battleActive = true;
 
     const me = state.party[state.activeIndex||0];
-    if (window.AudioMgr) AudioMgr.play('wild', {loop:true, volume:0.35});
     BattleScene.show(state, me, wild);
     BattleScene.say(`A wild ${wild.displayName} appeared!`);
+
+    if (window.AudioMgr){ AudioMgr.play('wild', {loop:true, volume:0.4}); }
+    if (window.AudioMgr){ AudioMgr.playCry(wild.cry); }
+    if (window.AudioMgr){ setTimeout(()=>AudioMgr.playCry(me.cry), 300); }
 
     const doAttack = (src, dst, move)=>{
       if(Math.random()*100 > (move.accuracy||100)){ Log.write(`${src.displayName}'s ${move.name} missed!`); return; }
       const dmg = this.calcDamage(src, dst, move);
       dst.hp = clamp(dst.hp - dmg, 0, dst.maxhp);
       Log.write(`${src.displayName} used ${move.name}! ${dmg} dmg.`);
+      BattleScene.damage(dmg);
       if(dst.hp<=0){ dst.fainted=true; Log.write(`${dst.displayName} fainted!`); }
     };
     const enemyMove = ()=> wild.moves[Math.floor(Math.random()*wild.moves.length)];
     const refresh   = ()=>{ renderParty(state.party); BattleScene.updateHP(state.party[state.activeIndex||0], wild); };
 
     BattleScene.onMove = async (myMove)=>{
+      if (myMove.pp > 0) myMove.pp--;
       const me = state.party[state.activeIndex||0];
       const first = me.spe >= wild.spe;
       if(first){ doAttack(me, wild, myMove); if(!wild.fainted) doAttack(wild, me, enemyMove()); }
@@ -74,7 +82,7 @@ const Battle = {
         Log.write(`Gotcha! ${wild.displayName} was caught!`);
         state.party.push(wild); addDexEntry(wild);
         this.trainerGain(state, 12 + wild.level*2);
-        if (window.AudioMgr) { AudioMgr.play('win', {loop:false, volume:0.5}); setTimeout(()=>AudioMgr.play('amb',{loop:true,volume:0.25}),1800); }
+        if (window.AudioMgr){ AudioMgr.play('win', {loop:false, volume:0.5}); setTimeout(()=>AudioMgr.play('amb',{loop:true,volume:0.28}),1800); }
         BattleScene.hide(); state.battleActive=false;
       }else{
         Log.write(`${wild.displayName} broke free!`);
@@ -105,6 +113,7 @@ const Battle = {
           state.activeIndex = i; Log.write(`Go! ${state.party[i].displayName}!`);
           m.classList.add('hidden'); m.innerHTML='';
           BattleScene.show(state, state.party[i], wild);
+          if (window.AudioMgr){ AudioMgr.playCry(state.party[i].cry); }
         };
       });
     };
@@ -114,18 +123,20 @@ const Battle = {
     const me = state.party[state.activeIndex||0];
 
     if(wild.fainted){
-      const gain = Math.floor(20 + wild.level*8);
+      const gain = Math.floor(15 + wild.level*7);
       me.xp += gain; Log.write(`${me.displayName} gained ${gain} XP!`);
       while(me.xp >= me.next){
         me.xp -= me.next; me.level++; me.next = 50 + me.level*25;
-        me.maxhp += 3; me.hp = me.maxhp; me.atk+=2; me.def+=2; me.spa+=2; me.spd+=2; me.spe+=1;
+        me.maxhp += 3; me.hp = me.maxhp;
+        me.atk+=2; me.def+=2; me.spa+=2; me.spd+=2; me.spe+=1;
+        me.moves.forEach(m => { m.ppMax = (m.ppMax||m.pp||20) + 1; m.pp = Math.min(m.ppMax, (m.pp||m.ppMax)); });
         Log.write(`${me.displayName} grew to Lv.${me.level}!`);
         await this.maybeEvolve(state, state.activeIndex||0);
       }
       renderParty(state.party);
 
       this.trainerGain(state, 10 + wild.level);
-      if (window.AudioMgr) { AudioMgr.play('win', {loop:false, volume:0.5}); setTimeout(()=>AudioMgr.play('amb',{loop:true,volume:0.25}),1800); }
+      if (window.AudioMgr){ AudioMgr.play('win', {loop:false, volume:0.5}); setTimeout(()=>AudioMgr.play('amb',{loop:true,volume:0.28}),1800); }
       BattleScene.hide(); state.battleActive=false;
     }
 
@@ -134,9 +145,10 @@ const Battle = {
       if(idx>=0){
         state.activeIndex = idx; Log.write(`Go! ${state.party[idx].displayName}!`);
         BattleScene.show(state, state.party[idx], wild);
+        if (window.AudioMgr){ AudioMgr.playCry(state.party[idx].cry); }
       }else{
         this.defeat(state);
-        if (window.AudioMgr) AudioMgr.play('amb', {loop:true, volume:0.25});
+        if (window.AudioMgr) AudioMgr.play('amb', {loop:true, volume:0.28});
         BattleScene.hide(); state.battleActive=false;
       }
     }
@@ -149,7 +161,6 @@ const Battle = {
       state.playerLevel = (state.playerLevel||1) + 1;
       Log.write(`Trainer leveled up! Lv ${state.playerLevel}.`);
     }
-    state.playerLevel = state.playerLevel || 1;
     updateMetaUI(state);
   },
 

@@ -3,14 +3,12 @@ const Game = {
     mode: 'home',
     floor: 1,
     party: [],
-    items: { pokeball: 5, potion: 2 }, // simple bag for now
+    items: { pokeball: 5, potion: 2 },
     money: 0,
     meta: { perks: [] },
     lock: false,
-    battleActive: false,   // <— prevents overlapping encounters
+    battleActive: false,
     activeIndex: 0,
-
-    // Trainer XP/level for difficulty scaling
     playerXp: 0,
     playerLevel: 1,
   },
@@ -18,18 +16,26 @@ const Game = {
   canvas: null, ctx: null,
   keys: {}, lastStep: 0,
 
+  async ensureAudioLoaded(){
+    if (!window.AudioMgr){
+      await new Promise(res=>{
+        const s = document.createElement('script');
+        s.src = 'js/audio.js'; s.onload = res; document.body.appendChild(s);
+      });
+    }
+    if (window.AudioMgr) AudioMgr.init();
+  },
+
   init(){
     Log.init();
+    this.ensureAudioLoaded();
 
-    // Canvas
     this.canvas = document.getElementById('view');
     this.ctx = this.canvas.getContext('2d');
     this.ctx.imageSmoothingEnabled = true;
 
-    // Make sure a world exists BEFORE any render starts
     World.gen(this.state.floor);
 
-    // Controls & UI
     this.bindControls();
     document.getElementById('btnEnter').onclick = ()=> this.enterDungeon();
     document.getElementById('btnHome').onclick  = ()=> this.showHome();
@@ -39,7 +45,6 @@ const Game = {
       if (s) this.state = Object.assign(this.state, s);
       updateMetaUI(this.state);
       renderParty(this.state.party);
-      // if we loaded into dungeon, ensure grid is ready
       if (this.state.mode === 'dungeon') World.gen(this.state.floor);
     };
     document.getElementById('btnHelp').onclick  = showHelp;
@@ -47,7 +52,6 @@ const Game = {
     updateMetaUI(this.state);
     renderParty(this.state.party);
 
-    // Home first, then start main loop
     this.showHome(true);
     this.loop(0);
   },
@@ -55,16 +59,13 @@ const Game = {
   showHome(initial=false){
     this.state.mode = 'home';
     updateMetaUI(this.state);
-
-    // start ambience on home
     if (window.AudioMgr) AudioMgr.play('amb', {loop:true, volume:0.25});
 
     homeScreen(async (maybeStarter) => {
       if (maybeStarter) {
-        // Build starter (Lv5), register in Pokédex
-        const moves   = await API.chooseLevelUpMoves(maybeStarter, 5);
-        const starter = Battle.createBattlerFromAPI(maybeStarter, 5, moves);
-        this.state.party       = [starter];
+        const moves   = await API.chooseLevelUpMoves(maybeStarter, 1);
+        const starter = Battle.createBattlerFromAPI(maybeStarter, 1, moves);
+        this.state.party = [starter];
         this.state.activeIndex = 0;
         addDexEntry(starter);
         renderParty(this.state.party);
@@ -76,10 +77,9 @@ const Game = {
 
   enterDungeon(){
     if (!this.state.party.length) {
-      // Safety: force starter if none exists
       pickStarter(async (p)=>{
-        const moves = await API.chooseLevelUpMoves(p, 5);
-        const starter = Battle.createBattlerFromAPI(p, 5, moves);
+        const moves = await API.chooseLevelUpMoves(p, 1);
+        const starter = Battle.createBattlerFromAPI(p, 1, moves);
         this.state.party = [starter];
         this.state.activeIndex = 0;
         addDexEntry(starter);
@@ -105,7 +105,6 @@ const Game = {
     window.addEventListener('keydown', e => { this.keys[e.key.toLowerCase()] = true; });
     window.addEventListener('keyup',   e => { this.keys[e.key.toLowerCase()] = false; });
 
-    // Mouse look
     let dragging=false, lastX=0;
     this.canvas.addEventListener('mousedown', e => { dragging=true; lastX=e.clientX; });
     window.addEventListener('mouseup', ()=> dragging=false);
@@ -118,7 +117,6 @@ const Game = {
   },
 
   async step(dt){
-    // Non-dungeon: draw a calm background and stop here
     if (this.state.mode !== 'dungeon') {
       const ctx=this.ctx, W=this.canvas.width, H=this.canvas.height;
       ctx.clearRect(0,0,W,H);
@@ -128,7 +126,6 @@ const Game = {
       return;
     }
 
-    // Movement
     const speed = 2.1, rot = 2.5, p = World.player;
     const forward = (this.keys['w']?1:0) - (this.keys['s']?1:0);
     const strafe  = (this.keys['d']?1:0) - (this.keys['a']?1:0);
@@ -141,22 +138,19 @@ const Game = {
     if(!World.isWall(nx, p.y)) p.x = nx;
     if(!World.isWall(p.x, ny)) p.y = ny;
 
-    // Encounters (trainers disabled for now; only wilds)
     if (!this.state.battleActive && Math.random() < BASE_ENCOUNTER_RATE * dt) {
       await this.encounter();
     }
 
-    // Optional: manual test encounter on Space
-    if (this.keys[' ']) {
+    if (this.keys[' ']){
       this.keys[' '] = false;
-      if (!this.state.battleActive) {
+      if (!this.state.battleActive){
         const wild = await API.getRandomEncounter(this.state.floor, this.state.playerLevel);
         await Battle.startWild(this.state, wild);
         renderParty(this.state.party);
       }
     }
 
-    // Exit tile → next floor + light auto-buy
     const atExit = Math.floor(p.x)===World.width-2 && Math.floor(p.y)===World.height-2;
     if (atExit) {
       this.state.floor++;
@@ -173,7 +167,7 @@ const Game = {
 
   async encounter(){
     const wild = await API.getRandomEncounter(this.state.floor, this.state.playerLevel);
-    await Battle.startWild(this.state, wild);   // sets/clears battleActive internally
+    await Battle.startWild(this.state, wild);
     renderParty(this.state.party);
   },
 
@@ -183,7 +177,6 @@ const Game = {
 
     this.step(dt);
 
-    // Only raycast in active dungeon mode
     if (this.state.mode === 'dungeon') {
       Ray.render(this.ctx, this.canvas, World);
     }
