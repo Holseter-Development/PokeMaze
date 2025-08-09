@@ -41,7 +41,7 @@ const Game = {
 
     this.canvas = document.getElementById('view');
     this.ctx = this.canvas.getContext('2d');
-    this.ctx.imageSmoothingEnabled = true;
+    this.ctx.imageSmoothingEnabled = false;
 
     World.genHome();
 
@@ -157,6 +157,7 @@ const Game = {
     const p = World.player;
     const npc = (World.entities||[]).find(e=>Math.hypot(e.x-p.x, e.y-p.y) < 1);
     if(!npc) return;
+    World.animate(npc);
     if(npc.type==='oak') this.talkOak();
     else if(npc.type==='shop') this.openShop();
   },
@@ -247,6 +248,7 @@ const Game = {
     const ny = p.y + dy * speed * dt;
     if(!World.isWall(nx, p.y)) p.x = nx;
     if(!World.isWall(p.x, ny)) p.y = ny;
+    World.discover(Math.floor(p.x), Math.floor(p.y));
 
     if (this.state.mode === 'dungeon'){
       if (!this.state.battleActive && Math.random() < BASE_ENCOUNTER_RATE * dt) {
@@ -272,6 +274,7 @@ const Game = {
             }else if(target.type==='chest' && !target.opened){
               target.opened=true;
               target.sprite=`assets/sprites/gif/${['Chest3.gif','Chest3.gif','Chest2.gif','BigChest.gif'][target.level]}`;
+              target._img=null;
               this.state.money += target.loot.money||0;
               this.state.items.pokeball += target.loot.pokeball||0;
               this.state.items.potion += target.loot.potion||0;

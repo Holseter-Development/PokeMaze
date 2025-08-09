@@ -3,7 +3,7 @@ const Ray = {
   fov: Math.PI/3, depth: 20,
   render(ctx, canvas, world){
     const W=canvas.width, H=canvas.height;
-    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingEnabled = false;
     ctx.clearRect(0,0,W,H);
     // ceiling
     const sky = ctx.createLinearGradient(0,0,0,H/2);
@@ -42,12 +42,20 @@ const Ray = {
       while(ang<-Math.PI) ang+=Math.PI*2; while(ang>Math.PI) ang-=Math.PI*2;
       return Object.assign({dist,ang}, e);
     }).sort((a,b)=>b.dist-a.dist);
+    function hasLoS(s){
+      let x=world.player.x, y=world.player.y;
+      const ang = Math.atan2(s.y-world.player.y, s.x-world.player.x);
+      const dx=Math.cos(ang)*0.05, dy=Math.sin(ang)*0.05;
+      let d=0; while(d<s.dist){ x+=dx; y+=dy; d+=0.05; if(world.isWall(x,y)) return false; }
+      return true;
+    }
     sprites.forEach(s=>{
       if(Math.abs(s.ang) > this.fov/2) return;
+      if(!hasLoS(s)) return;
       const size = Math.min(H, H/(s.dist*0.5));
       const x = (s.ang + this.fov/2)/this.fov * W - size/2;
-      const y = H/2 - size;
-      s._img = s._img || (()=>{ const i=new Image(); i.src=s.sprite; return i; })();
+      const y = H - size;
+      if(!s._img || s._img.src !== s.sprite){ const i=new Image(); i.src=s.sprite; s._img=i; }
       ctx.drawImage(s._img, x, y, size, size);
     });
     const fogGrad = ctx.createLinearGradient(0,0,0,H);
@@ -61,11 +69,15 @@ const Ray = {
     const m = document.getElementById('minimapCanvas').getContext('2d');
     m.clearRect(0,0,120,120);
     const sx = 120/world.width, sy = 120/world.height;
-    m.fillStyle='#0a1526'; m.fillRect(0,0,120,120);
-    m.fillStyle='#243a62';
-    for(let y=0;y<world.height;y++){
-      for(let x=0;x<world.width;x++){
-        if(world.grid[y][x]===1) m.fillRect(x*sx,y*sy,sx,sy);
+    m.fillStyle='#000'; m.fillRect(0,0,120,120);
+    if(world.discovered){
+      for(let y=0;y<world.height;y++){
+        for(let x=0;x<world.width;x++){
+          if(!world.discovered[y][x]) continue;
+          if(world.grid[y][x]===1){ m.fillStyle='#243a62'; }
+          else{ m.fillStyle='#0a1526'; }
+          m.fillRect(x*sx,y*sy,sx,sy);
+        }
       }
     }
     m.fillStyle='#7bf';
@@ -74,9 +86,5 @@ const Ray = {
     m.beginPath(); m.moveTo(world.player.x*sx, world.player.y*sy);
     m.lineTo((world.player.x+Math.cos(world.player.dir)*2)*sx, (world.player.y+Math.sin(world.player.dir)*2)*sy);
     m.stroke();
-    if(world.entities){
-      m.fillStyle='#ff0';
-      world.entities.forEach(e=>{ m.fillRect(e.x*sx-2, e.y*sy-2,4,4); });
-    }
   }
 };
