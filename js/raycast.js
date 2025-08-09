@@ -17,20 +17,34 @@ const Ray = {
     const step = this.fov/W;
     for(let col=0; col<W; col++){
       const angle = world.player.dir - this.fov/2 + step*col;
-      let dist=0, hit=false;
+      let dist=0, hit=false, tile=0;
       let x=world.player.x, y=world.player.y;
       const dx=Math.cos(angle)*0.05, dy=Math.sin(angle)*0.05;
       while(dist<this.depth){
         x+=dx; y+=dy; dist+=0.05;
-        if(world.isWall(x,y)){ hit=true; break; }
+        tile = world.tileAt(x,y);
+        if(tile>0){ hit=true; break; }
       }
       if(!hit) continue;
       const height = Math.min(H, H/(dist*0.5));
       const y0 = (H-height)/2;
       const fog = Math.max(0, Math.min(1, dist/this.depth));
-      const r = Math.floor(40*(1-fog)+10);
-      const g = Math.floor(90*(1-fog)+10);
-      const b = Math.floor(160*(1-fog)+25);
+      let r,g,b;
+      if(tile===2){ // exit
+        r = Math.floor(200*(1-fog)+55);
+        g = Math.floor(170*(1-fog)+40);
+        b = Math.floor(40*(1-fog)+0);
+      } else if(tile===3){ // boulder
+        r = Math.floor(80*(1-fog)+20);
+        g = Math.floor(60*(1-fog)+20);
+        b = Math.floor(40*(1-fog)+20);
+      } else if(tile===4){ // spike
+        r = g = b = Math.floor(150*(1-fog)+50);
+      } else { // cave wall
+        r = Math.floor(40*(1-fog)+10);
+        g = Math.floor(90*(1-fog)+10);
+        b = Math.floor(160*(1-fog)+25);
+      }
       ctx.fillStyle = `rgb(${r},${g},${b})`;
       ctx.fillRect(col, y0, 1, height);
     }
@@ -46,10 +60,13 @@ const Ray = {
     m.clearRect(0,0,120,120);
     const sx = 120/world.width, sy = 120/world.height;
     m.fillStyle='#0a1526'; m.fillRect(0,0,120,120);
-    m.fillStyle='#243a62';
     for(let y=0;y<world.height;y++){
       for(let x=0;x<world.width;x++){
-        if(world.grid[y][x]===1) m.fillRect(x*sx,y*sy,sx,sy);
+        const t = world.grid[y][x];
+        if(t===1){ m.fillStyle='#243a62'; m.fillRect(x*sx,y*sy,sx,sy); }
+        else if(t===3){ m.fillStyle='#555'; m.fillRect(x*sx,y*sy,sx,sy); }
+        else if(t===4){ m.fillStyle='#888'; m.fillRect(x*sx,y*sy,sx,sy); }
+        else if(t===2){ m.fillStyle='#fa0'; m.fillRect(x*sx,y*sy,sx,sy); }
       }
     }
     m.fillStyle='#7bf';

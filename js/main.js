@@ -157,7 +157,7 @@ const Game = {
     }
 
     // Exit tile → next floor + light auto-buy
-    const atExit = Math.floor(p.x)===World.width-2 && Math.floor(p.y)===World.height-2;
+    const atExit = Math.floor(p.x)===World.exit.x && Math.floor(p.y)===World.exit.y;
     if (atExit) {
       this.state.floor++;
       World.gen(this.state.floor);
