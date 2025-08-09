@@ -17,8 +17,10 @@
 .bar .xp>i{display:block; height:100%; background:linear-gradient(90deg,#6aa6ff,#93c5fd)}
 
 .battle-text{position:absolute; left:0; right:0; top:8%; text-align:center; font-family:Oxanium,monospace; font-size:24px; color:#e8f2ff; text-shadow:0 2px 8px #0007}
-.float-dmg{position:absolute; right:18%; top:28%; font-weight:800; font-size:24px; color:#ff6e7a; opacity:0; transform:translateY(10px); transition:all .35s ease}
+.float-dmg{position:absolute; font-weight:800; font-size:24px; color:#ff6e7a; opacity:0; transform:translateY(10px); transition:all .35s ease}
 .float-dmg.show{opacity:1; transform:translateY(-14px)}
+.dmg-enemy{right:18%; top:28%}
+.dmg-player{left:18%; bottom:30%}
 
 .battle-ui{display:grid; grid-template-columns:2fr 1fr; gap:12px; margin-top:10px}
 .left-moves{display:grid; grid-template-columns:1fr 1fr; gap:10px}

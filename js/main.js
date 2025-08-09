@@ -5,7 +5,7 @@ const Game = {
     party: [],
     items: { pokeball: 5, potion: 2 },
     money: 0,
-    meta: { perks: [] },
+    meta: { perks: [], bonusBalls: 0, captured: [] },
     lock: false,
     battleActive: false,
     activeIndex: 0,
@@ -30,6 +30,13 @@ const Game = {
     Log.init();
     this.ensureAudioLoaded();
 
+    // Auto-load any saved state and ensure meta fields exist
+    const loaded = Storage.load();
+    if (loaded) {
+      this.state = Object.assign(this.state, loaded);
+      this.state.meta = Object.assign({perks: [], bonusBalls: 0, captured: []}, loaded.meta||{});
+    }
+
     this.canvas = document.getElementById('view');
     this.ctx = this.canvas.getContext('2d');
     this.ctx.imageSmoothingEnabled = true;
@@ -42,7 +49,10 @@ const Game = {
     document.getElementById('btnSave').onclick  = ()=> Storage.save(this.state);
     document.getElementById('btnLoad').onclick  = ()=>{
       const s = Storage.load();
-      if (s) this.state = Object.assign(this.state, s);
+      if (s) {
+        this.state = Object.assign(this.state, s);
+        this.state.meta = Object.assign({perks: [], bonusBalls: 0, captured: []}, s.meta||{});
+      }
       updateMetaUI(this.state);
       renderParty(this.state.party);
       if (this.state.mode === 'dungeon') World.gen(this.state.floor);
@@ -95,9 +105,10 @@ const Game = {
   beginRun(){
     this.state.mode = 'dungeon';
     World.gen(this.state.floor);
-    this.state.items.pokeball = Math.max(this.state.items.pokeball, 5);
+    const baseBalls = 5 + (this.state.meta.bonusBalls||0);
+    this.state.items.pokeball = Math.max(this.state.items.pokeball, baseBalls);
     updateMetaUI(this.state);
-    Log.write('Entered the dungeon.');
+    Log.write(`Entered the dungeon with ${this.state.items.pokeball} Poké Ball(s).`);
     if (window.AudioMgr) AudioMgr.play('amb', {loop:true, volume:0.25});
   },
 
