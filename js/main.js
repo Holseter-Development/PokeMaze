@@ -68,7 +68,23 @@ const Game = {
 
   showHome(initial=false){
     this.state.mode = 'home';
+
+    // Heal the party when returning home
+    this.state.party.forEach(p => {
+      p.hp = p.maxhp;
+      p.status = null;
+      p.fainted = false;
+      if (Array.isArray(p.moves)) {
+        p.moves.forEach(m => { m.pp = m.ppMax || m.pp; });
+      }
+    });
+    renderParty(this.state.party);
+
+    Log.write('All Pokémon have been healed.');
+
     updateMetaUI(this.state);
+    Storage.save(this.state);
+
     if (window.AudioMgr) AudioMgr.play('amb', {loop:true, volume:0.25});
 
     homeScreen(async (maybeStarter) => {

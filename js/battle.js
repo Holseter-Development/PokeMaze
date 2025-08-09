@@ -174,10 +174,12 @@ const Battle = {
 
   defeat(state){
     Log.write('You were defeated. Returning home. Progress persists.');
-    state.mode='home';
-    state.party.forEach(p=>{ p.hp=p.maxhp; });
+    state.mode = 'home';
     state.items.pokeball = Math.max(state.items.pokeball, 3);
     updateMetaUI(state);
     Storage.save(state);
+    if (typeof Game !== 'undefined' && Game.showHome) {
+      Game.showHome();
+    }
   }
 };
